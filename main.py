@@ -1,9 +1,10 @@
-from fastapi import Body, FastAPI, Path, Query
+from fastapi import Body, FastAPI, HTTPException, Path, Query, Request, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.security import HTTPBearer
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-from auth_jwt import create_jwt_token
+from auth_jwt import create_jwt_token, validateToken
 
 
 app = FastAPI(
@@ -12,10 +13,18 @@ app = FastAPI(
     version="0.0.1"
 )
 
+class BearerJWT(HTTPBearer):
+    async def __call__(self, request: Request) -> str:
+        auth = await super().__call__(request)
+        data = validateToken(auth.credentials)  # <- aquí usamos validateToken
+        if data['email'] != 'info@devromo.com':
+            raise HTTPException(status_code=403, detail="Invalid token")
+        return data
+
+
 class User(BaseModel):
     email: str
     password: str
-
 
 class Movie(BaseModel):
     id: Optional[int] = None
@@ -39,12 +48,13 @@ def read_root():
 
 @app.post("/login", tags=["authentication"])
 def login(user: User):
-    # Aquí deberías validar credenciales con DB, pero de prueba solo generamos el token
+    # Genera token a partir de los datos del usuario
     token = create_jwt_token(data={"email": user.email})
     return JSONResponse(content={"access_token": token}, status_code=200)
 
+
 '''get'''
-@app.get("/movies", tags=["Movies"])
+@app.get("/movies", tags=["Movies"], dependencies=[Depends(BearerJWT())])
 def get_movies():
  return JSONResponse(movies, status_code=200)   
 
